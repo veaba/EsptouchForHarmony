@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EspTouch 配网架构图</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e0e0e0;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 50px;
+            font-size: 1.1rem;
+        }
+
+        .flow-diagram {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            margin-bottom: 60px;
+        }
+
+        .phase {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .phase-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .phase-number {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-right: 20px;
+        }
+
+        .phase-1 .phase-number { background: linear-gradient(135deg, #f093fb, #f5576c); }
+        .phase-2 .phase-number { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+        .phase-3 .phase-number { background: linear-gradient(135deg, #43e97b, #38f9d7); }
+
+        .phase-title {
+            font-size: 1.4rem;
+            font-weight: 600;
+        }
+
+        .phase-desc {
+            color: #aaa;
+            margin-left: auto;
+            font-size: 0.9rem;
+        }
+
+        .devices-row {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin: 30px 0;
+        }
+
+        .device {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .device-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: 0 auto 10px;
+        }
+
+        .phone-icon {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+        }
+
+        .esp-icon {
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+        }
+
+        .router-icon {
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+        }
+
+        .device-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .device-detail {
+            color: #888;
+            font-size: 0.85rem;
+            margin-top: 5px;
+        }
+
+        .arrow {
+            font-size: 2rem;
+            color: #00d4ff;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.1); }
+        }
+
+        .packet-info {
+            background: rgba(0, 212, 255, 0.1);
+            border-left: 3px solid #00d4ff;
+            padding: 15px 20px;
+            margin: 15px 0;
+            border-radius: 0 8px 8px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .packet-title {
+            color: #00d4ff;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .packet-content {
+            color: #b0b0b0;
+        }
+
+        .protocol-spec {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .spec-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 12px 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .spec-label {
+            color: #888;
+        }
+
+        .spec-value {
+            color: #4facfe;
+            font-family: 'Courier New', monospace;
+        }
+
+        .data-flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .data-box {
+            background: rgba(124, 58, 237, 0.2);
+            border: 1px solid rgba(124, 58, 237, 0.5);
+            border-radius: 8px;
+            padding: 10px 15px;
+            text-align: center;
+        }
+
+        .data-box-label {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .data-box-value {
+            font-size: 0.95rem;
+            color: #e0e0e0;
+            margin-top: 5px;
+        }
+
+        .encoding-diagram {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+
+        .encoding-title {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 15px;
+        }
+
+        .byte-row {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+
+        .byte-box {
+            width: 50px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+
+        .byte-0 { background: rgba(240, 147, 251, 0.3); border: 1px solid #f093fb; }
+        .byte-1 { background: rgba(245, 87, 108, 0.3); border: 1px solid #f5576c; }
+        .byte-2 { background: rgba(79, 172, 254, 0.3); border: 1px solid #4facfe; }
+        .byte-3 { background: rgba(0, 242, 254, 0.3); border: 1px solid #00f2fe; }
+        .byte-4 { background: rgba(67, 233, 123, 0.3); border: 1px solid #43e97b; }
+        .byte-5 { background: rgba(56, 249, 215, 0.3); border: 1px solid #38f9d7; }
+
+        .data-flow-arrow {
+            color: #00d4ff;
+            font-size: 1.2rem;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(180deg, #f093fb, #4facfe, #43e97b);
+        }
+
+        .timeline-item {
+            position: relative;
+            margin-bottom: 25px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -25px;
+            top: 5px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #4facfe;
+            border: 3px solid #1a1a2e;
+        }
+
+        .timeline-time {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        .timeline-content {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .architecture-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 60px;
+        }
+
+        .arch-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .arch-card-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .arch-card-icon {
+            font-size: 1.5rem;
+        }
+
+        .arch-card ul {
+            list-style: none;
+            color: #aaa;
+        }
+
+        .arch-card li {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .arch-card li:last-child {
+            border-bottom: none;
+        }
+
+        .highlight {
+            color: #00d4ff;
+        }
+
+        .note {
+            background: rgba(255, 193, 7, 0.1);
+            border-left: 3px solid #ffc107;
+            padding: 15px;
+            border-radius: 0 8px 8px 0;
+            margin: 20px 0;
+        }
+
+        .note-title {
+            color: #ffc107;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>EspTouch 配网协议架构图</h1>
+        <p class="subtitle">Smart Config 智能配置技术 — 从手机/PC 到 ESP 设备的数据传输过程</p>
+
+        <!-- 架构总览 -->
+        <div class="phase phase-1">
+            <div class="phase-header">
+                <div class="phase-number">🏠</div>
+                <div class="phase-title">系统架构总览</div>
+            </div>
+
+            <div class="devices-row">
+                <div class="device">
+                    <div class="device-icon phone-icon">📱</div>
+                    <div class="device-name">手机 / PC</div>
+                    <div class="device-detail">发送 UDP 数据包</div>
+                    <div class="device-detail" style="color:#4facfe">端口 18266</div>
+                </div>
+
+                <div class="arrow">➜</div>
+
+                <div class="device">
+                    <div class="device-icon router-icon">📡</div>
+                    <div class="device-name">Wi-Fi 路由器</div>
+                    <div class="device-detail">广播/组播转发</div>
+                    <div class="device-detail" style="color:#4facfe">2.4 GHz</div>
+                </div>
+
+                <div class="arrow">➜</div>
+
+                <div class="device">
+                    <div class="device-icon esp-icon">📶</div>
+                    <div class="device-name">ESP 设备</div>
+                    <div class="device-detail">监听端口 7001</div>
+                    <div class="device-detail" style="color:#f5576c">未联网状态</div>
+                </div>
+            </div>
+
+            <div class="note">
+                <div class="note-title">⚠️ 关键约束</div>
+                <p>由于 ESP 设备初始未联网，无法直接接收数据。信息通过 UDP 数据包的<strong>长度字段</strong>编码，设备 Sniffer 模式解析长度获取 SSID 和密码。</p>
+            </div>
+        </div>
+
+        <!-- Phase 1: Guide Code -->
+        <div class="flow-diagram">
+            <div class="phase phase-1">
+                <div class="phase-header">
+                    <div class="phase-number">1</div>
+                    <div class="phase-title">Guide Code 引导码</div>
+                    <div class="phase-desc">唤醒设备 · 8ms 间隔 · 4 轮</div>
+                </div>
+
+                <div class="data-flow">
+                    <div class="data-box">
+                        <div class="data-box-label">Guide Code</div>
+                        <div class="data-box-value">512</div>
+                    </div>
+                    <div class="data-flow-arrow">→</div>
+                    <div class="data-box">
+                        <div class="data-box-label">Guide Code</div>
+                        <div class="data-box-value">513</div>
+                    </div>
+                    <div class="data-flow-arrow">→</div>
+                    <div class="data-box">
+                        <div class="data-box-label">Guide Code</div>
+                        <div class="data-box-value">514</div>
+                    </div>
+                    <div class="data-flow-arrow">→</div>
+                    <div class="data-box">
+                        <div class="data-box-label">Guide Code</div>
+                        <div class="data-box-value">515</div>
+                    </div>
+                </div>
+
+                <div class="packet-info">
+                    <div class="packet-title">📦 数据包格式 (6 字节 DataCode)</div>
+                    <div class="encoding-diagram">
+                        <div class="encoding-title">每个字符编码为 2 个 DataCode（共 9 bits 显示）</div>
+                        <div class="byte-row">
+                            <div class="byte-box byte-0">0x00</div>
+                            <div class="byte-box byte-1">[CRC high][Data high]</div>
+                            <div class="byte-box byte-2">0x01</div>
+                            <div class="byte-box byte-3">[Seq Header]</div>
+                            <div class="byte-box byte-4">0x00</div>
+                            <div class="byte-box byte-5">[CRC low][Data low]</div>
+                        </div>
+                        <div style="margin-top:10px; color:#888; font-size:0.85rem;">
+                            CRC = CRC8(data & 0xFF, index) · 数据拆分高4位/低4位
+                        </div>
+                    </div>
+                </div>
+
+                <div class="protocol-spec">
+                    <div class="spec-item">
+                        <span class="spec-label">目标端口</span>
+                        <span class="spec-value">7001</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">发送间隔</span>
+                        <span class="spec-value">8ms</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">广播地址</span>
+                        <span class="spec-value">255.255.255.255</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">数据格式</span>
+                        <span class="spec-value">2 x 3 = 6 字节</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 2: Datum Code -->
+            <div class="phase phase-2">
+                <div class="phase-header">
+                    <div class="phase-number">2</div>
+                    <div class="phase-title">Datum Code 数据码</div>
+                    <div class="phase-desc">传输 SSID + Password + BSSID + IP</div>
+                </div>
+
+                <div class="packet-info">
+                    <div class="packet-title">📦 数据包结构顺序</div>
+                    <div class="encoding-diagram">
+                        <div class="byte-row" style="flex-wrap: wrap; justify-content: center;">
+                            <div class="byte-box byte-0">total_len<br><small>总长度</small></div>
+                            <div class="byte-box byte-1">pwd_len<br><small>密码长度</small></div>
+                            <div class="byte-box byte-2">ssid_crc<br><small>SSID校验</small></div>
+                            <div class="byte-box byte-3">bssid_crc<br><small>BSSID校验</small></div>
+                            <div class="byte-box byte-4">total_xor<br><small>XOR校验</small></div>
+                            <div class="byte-box byte-0">IP[4]<br><small>本机IP</small></div>
+                            <div class="byte-box byte-1">Password<br><small>密码字节</small></div>
+                            <div class="byte-box byte-2">SSID<br><small>网络名称</small></div>
+                            <div class="byte-box byte-3">BSSID[6]<br><small>路由器MAC</small></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="data-flow">
+                    <div class="data-box">
+                        <div class="data-box-label">额外长度</div>
+                        <div class="data-box-value">+40</div>
+                    </div>
+                    <div class="data-flow-arrow">=</div>
+                    <div class="data-box">
+                        <div class="data-box-label">发送格式</div>
+                        <div class="data-box-value">[Header 5] + IP + Pwd + SSID + BSSID</div>
+                    </div>
+                </div>
+
+                <div class="protocol-spec">
+                    <div class="spec-item">
+                        <span class="spec-label">发送间隔</span>
+                        <span class="spec-value">8ms</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">总长度上限</span>
+                        <span class="spec-value">105 字节</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">循环发送</span>
+                        <span class="spec-value">直到设备响应或超时</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">超时时间</span>
+                        <span class="spec-value">45 秒</span>
+                    </div>
+                </div>
+
+                <div class="encoding-diagram">
+                    <div class="encoding-title">6 字节 DataCode 编码示例</div>
+                    <div style="color:#888; font-size:0.9rem; margin-bottom:10px;">
+                        以字符 'a' (0x61) 为例，index = 5
+                    </div>
+                    <div class="byte-row">
+                        <span style="color:#888; width:80px;">输入:</span>
+                        <div class="byte-box byte-0">0x61</div>
+                        <span style="margin: 0 10px;">→</span>
+                        <span style="color:#888;">高4位=6, 低4位=1</span>
+                    </div>
+                    <div class="byte-row">
+                        <span style="color:#888; width:80px;">CRC:</span>
+                        <div class="byte-box byte-1">CRC8(0x61, 5) = 0x8F</div>
+                        <span style="margin: 0 10px;">→</span>
+                        <span style="color:#888;">高4位=8, 低4位=F</span>
+                    </div>
+                    <div class="byte-row" style="margin-top:15px;">
+                        <span style="color:#888; width:80px;">结果:</span>
+                        <div class="byte-box byte-0">0x00</div>
+                        <div class="byte-box byte-1">0x68</div>
+                        <div class="byte-box byte-2">0x01</div>
+                        <div class="byte-box byte-3">0x05</div>
+                        <div class="byte-box byte-4">0x00</div>
+                        <div class="byte-box byte-5">0x8F</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 3: Device Response -->
+            <div class="phase phase-3">
+                <div class="phase-header">
+                    <div class="phase-number">3</div>
+                    <div class="phase-title">设备响应</div>
+                    <div class="phase-desc">UDP 单播返回 BSSID + IP</div>
+                </div>
+
+                <div class="data-flow">
+                    <div class="device">
+                        <div class="device-icon esp-icon">📶</div>
+                        <div class="device-name">ESP 设备</div>
+                        <div class="device-detail">配网成功</div>
+                    </div>
+                    <div class="arrow" style="animation-direction: reverse;">➜</div>
+                    <div class="device">
+                        <div class="device-icon phone-icon">📱</div>
+                        <div class="device-name">手机 / PC</div>
+                        <div class="device-detail">监听 18266 端口</div>
+                    </div>
+                </div>
+
+                <div class="packet-info">
+                    <div class="packet-title">📦 响应数据包格式</div>
+                    <div class="encoding-diagram">
+                        <div class="byte-row" style="justify-content: center;">
+                            <div class="byte-box byte-0">BSSID[6]<br><small>设备MAC</small></div>
+                            <div class="byte-box byte-1">IP[4]<br><small>设备IP</small></div>
+                            <div class="byte-box byte-2">...<br><small>附加数据</small></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="protocol-spec">
+                    <div class="spec-item">
+                        <span class="spec-label">响应端口</span>
+                        <span class="spec-value">18266</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">响应地址</span>
+                        <span class="spec-value">发送者 IP</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">成功条件</span>
+                        <span class="spec-value">收到指定数量响应</span>
+                    </div>
+                    <div class="spec-item">
+                        <span class="spec-label">阈值</span>
+                        <span class="spec-value">1 次成功即可</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 时序图 -->
+        <div class="phase phase-2">
+            <div class="phase-header">
+                <div class="phase-number">📊</div>
+                <div class="phase-title">配网时序图</div>
+            </div>
+
+            <div class="timeline">
+                <div class="timeline-item">
+                    <div class="timeline-time">T=0ms</div>
+                    <div class="timeline-content">
+                        <strong>Guide Code 第 1 轮</strong> - 发送 512, 513, 514, 515 (8ms 间隔)
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-time">T=32ms</div>
+                    <div class="timeline-content">
+                        <strong>Datum Code 开始</strong> - 循环发送 total_len, pwd_len, ssid_crc, bssid_crc, total_xor, IP, password, ssid, bssid
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-time">T=8ms 周期</div>
+                    <div class="timeline-content">
+                        <strong>持续发送</strong> - 每 8ms 发送一组 DataCode，直到设备响应或 45 秒超时
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-time">设备响应</div>
+                    <div class="timeline-content">
+                        <strong>UDP 单播</strong> - 设备返回 BSSID + IP 到端口 18266
+                    </div>
+                </div>
+                <div class="timeline-item">
+                    <div class="timeline-time">配网完成</div>
+                    <div class="timeline-content">
+                        <strong>成功</strong> - 显示设备 BSSID 和分配到的 IP 地址
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 技术要点卡片 -->
+        <div class="architecture-overview">
+            <div class="arch-card">
+                <div class="arch-card-title">
+                    <span class="arch-card-icon">🔐</span>
+                    累积纠错算法
+                </div>
+                <ul>
+                    <li>20 MHz 带宽：0-5% 错误率</li>
+                    <li>40 MHz 带宽：0-17% 错误率</li>
+                    <li>多轮发送提高成功率至 95%+</li>
+                    <li>公式：<span class="highlight">[1-(1-P)^k]^l</span></li>
+                    <li>P=成功率, k=轮次, l=数据长度</li>
+                </ul>
+            </div>
+
+            <div class="arch-card">
+                <div class="arch-card-title">
+                    <span class="arch-card-icon">📡</span>
+                    广播 vs 组播
+                </div>
+                <ul>
+                    <li><strong>广播</strong>：255.255.255.255:7001</li>
+                    <li><strong>组播</strong>：234.0.0.1-100:7001</li>
+                    <li>广播：所有设备接收</li>
+                    <li>组播：特定范围设备</li>
+                    <li>默认使用广播模式</li>
+                </ul>
+            </div>
+
+            <div class="arch-card">
+                <div class="arch-card-title">
+                    <span class="arch-card-icon">⚡</span>
+                    性能指标
+                </div>
+                <ul>
+                    <li>Guide Code：4 轮 × 4 包</li>
+                    <li>数据间隔：8ms</li>
+                    <li>单轮时间：约 4.68s</li>
+                    <li>6 轮成功率：99.9998%</li>
+                    <li>总超时：45 秒</li>
+                </ul>
+            </div>
+
+            <div class="arch-card">
+                <div class="arch-card-title">
+                    <span class="arch-card-icon">⚠️</span>
+                    已知限制
+                </div>
+                <ul>
+                    <li>不支持 5 GHz Wi-Fi</li>
+                    <li>不支持 802.11ac 协议</li>
+                    <li>需要设备在路由器范围内</li>
+                    <li>AP 隔离可能导致无响应</li>
+                    <li>V1/V2 之间不兼容</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- CRC8 说明 -->
+        <div class="phase phase-1" style="margin-top: 30px;">
+            <div class="phase-header">
+                <div class="phase-number">🔧</div>
+                <div class="phase-title">CRC8 多项式算法</div>
+            </div>
+            <div class="packet-info" style="background: rgba(240, 147, 251, 0.1); border-color: #f093fb;">
+                <div class="packet-title" style="color: #f093fb;">多项式: 0x8C · 初始值: 0x00</div>
+                <div class="encoding-diagram" style="background: rgba(0,0,0,0.2);">
+                    <pre style="color: #b0b0b0; font-family: 'Courier New', monospace; line-height: 1.6;">
+for dividend = 0 to 255:
+    remainder = dividend
+    for bit = 0 to 7:
+        if (remainder & 0x01):
+            remainder = (remainder >> 1) XOR 0x8C
+        else:
+            remainder = remainder >> 1
+    crcTable[dividend] = remainder
+
+// 计算时:
+value = 0x00
+for each byte b:
+    data = b XOR value
+    value = crcTable[data & 0xFF] XOR (value << 8)
+result = value & 0xFF</pre>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</body>
+</html>
