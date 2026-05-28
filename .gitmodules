@@ -1,0 +1,3 @@
+[submodule "EsptouchForAndroid"]
+	path = EsptouchForAndroid
+	url = git@github.com:EspressifApp/EsptouchForAndroid.git
