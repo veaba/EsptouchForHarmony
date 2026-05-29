@@ -1,0 +1,56 @@
+{
+  app: {
+    signingConfigs: [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\Godpu\\.ohos\\config\\default_EsptouchForHarmony_NoDaa2kcBW-4DXM3PnLaKqTfE7dTFW1BdqDmRssv3Aw=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001A31D681240F4B47F83C0AEDFF55421BE680F6D867BCB53C30E279D1CA79217DD6F422BFDDC15E",
+          "profile": "C:\\Users\\Godpu\\.ohos\\config\\default_EsptouchForHarmony_NoDaa2kcBW-4DXM3PnLaKqTfE7dTFW1BdqDmRssv3Aw=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\Godpu\\.ohos\\config\\default_EsptouchForHarmony_NoDaa2kcBW-4DXM3PnLaKqTfE7dTFW1BdqDmRssv3Aw=.p12",
+          "storePassword": "0000001A3EDBBCA4CB122A700B712F31DE4BE54655F6503A550148D416ADEEB93DA51CB70D2664E9537A"
+        }
+      }
+    ],
+    products: [
+      {
+        name: "default",
+        signingConfig: "default",
+        targetSdkVersion: "6.0.0(20)",
+        compatibleSdkVersion: "6.0.0(20)",
+        runtimeOS: "HarmonyOS",
+        buildOption: {
+          strictMode: {
+            caseSensitiveCheck: true,
+            useNormalizedOHMUrl: true,
+          },
+        },
+      },
+    ],
+    buildModeSet: [
+      {
+        name: "debug",
+      },
+      {
+        name: "release",
+      },
+    ],
+  },
+  modules: [
+    {
+      name: "entry",
+      srcPath: "./entry",
+      targets: [
+        {
+          name: "default",
+          applyToProducts: [
+            "default"
+          ],
+        },
+      ],
+    },
+  ],
+}

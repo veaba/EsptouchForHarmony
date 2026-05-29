@@ -1,0 +1,36 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "EsptouchForHarmony"
+    },
+    {
+      "name": "internet_reason",
+      "value": "UDP network communication for device provisioning"
+    },
+    {
+      "name": "wifi_info_reason",
+      "value": "Read current WiFi SSID, BSSID and IP address for provisioning"
+    },
+    {
+      "name": "camera_reason",
+      "value": "Scan WiFi QR code for automatic network provisioning"
+    },
+    {
+      "name": "network_info_reason",
+      "value": "Get network interface information for address resolution"
+    },
+    {
+      "name": "set_wifi_info_reason",
+      "value": "Read WiFi network information for AP-mode provisioning flow"
+    }
+  ]
+}
