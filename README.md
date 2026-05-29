@@ -8,6 +8,12 @@
 
 ---
 
+**1. app-smart-config-esptouch**:
+
+![app-smart-config-esptouch.png](app-smart-config-esptouch.png)
+
+**2.the esp32 device join wifi:**
+
 ![esp32-s3-join-wifi-successful](esp32-s3-join-wifi-successful.png)
 
 ## 概述

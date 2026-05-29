@@ -11,6 +11,9 @@ import { EspProvisioner } from '../esptouch/provision/EspProvisioner';
 import { EspProvisioningRequestBuilder, EspProvisioningRequest } from '../esptouch/provision/EspProvisioningRequest';
 import { EspProvisioningResult } from '../esptouch/provision/EspProvisioningResult';
 import type { EspProvisioningListener } from '../esptouch/provision/EspProvisioningListener';
+import { DeviceStatus } from '../esptouch/provision/DeviceStatus';
+import { DeviceInfo, DeviceOnlineState } from '../esptouch/provision/DeviceInfo';
+import { DeviceMonitor, DeviceMonitorListener } from '../esptouch/provision/DeviceMonitor';
 import { getLocalIpAddress, getBssidString, getSsidString, convertBssid2Bytes } from '../esptouch/provision/TouchNetUtil';
 import { parseWiFiQRCode, WiFiCredentials } from '../esptouch/scan/QRCodeParser';
 
@@ -51,17 +54,20 @@ class ProvisioningListenerImpl implements EspProvisioningListener {
   private onResponseCb: (result: EspProvisioningResult) => void;
   private onStopCb: () => void;
   private onErrorCb: (error: Error) => void;
+  private onDeviceStatusCb: ((status: DeviceStatus) => void) | null;
 
   constructor(
     onStart: () => void,
     onResponse: (result: EspProvisioningResult) => void,
     onStop: () => void,
-    onError: (error: Error) => void
+    onError: (error: Error) => void,
+    onDeviceStatus?: (status: DeviceStatus) => void
   ) {
     this.onStartCb = onStart;
     this.onResponseCb = onResponse;
     this.onStopCb = onStop;
     this.onErrorCb = onError;
+    this.onDeviceStatusCb = onDeviceStatus ?? null;
   }
 
   onStart(): void {
@@ -78,6 +84,33 @@ class ProvisioningListenerImpl implements EspProvisioningListener {
 
   onError(error: Error): void {
     this.onErrorCb(error);
+  }
+
+  onDeviceStatus(status: DeviceStatus): void {
+    if (this.onDeviceStatusCb != null) {
+      this.onDeviceStatusCb(status);
+    }
+  }
+}
+
+class DeviceMonitorListenerImpl implements DeviceMonitorListener {
+  private onDeviceStatusCb: (status: DeviceStatus) => void;
+  private onMonitorErrorCb: (error: Error) => void;
+
+  constructor(
+    onDeviceStatus: (status: DeviceStatus) => void,
+    onMonitorError: (error: Error) => void
+  ) {
+    this.onDeviceStatusCb = onDeviceStatus;
+    this.onMonitorErrorCb = onMonitorError;
+  }
+
+  onDeviceStatus(status: DeviceStatus): void {
+    this.onDeviceStatusCb(status);
+  }
+
+  onMonitorError(error: Error): void {
+    this.onMonitorErrorCb(error);
   }
 }
 
@@ -117,6 +150,7 @@ struct Index {
   // Discovered devices
   @State devices: EspProvisioningResult[] = [];
   @State selectedDeviceIndex: number = -1;
+  @State deviceInfoList: DeviceInfo[] = [];
 
   // Log
   @State logText: string = '';
@@ -124,14 +158,76 @@ struct Index {
 
   // Non-state references
   private provisioner: EspProvisioner | null = null;
+  private deviceMonitor: DeviceMonitor = new DeviceMonitor();
   private scanInitialized: boolean = false;
   private scannedCredentials: WiFiCredentials | null = null;
   private cameraSurfaceId: string = '';
   private xComponentCtrl: XComponentController = new XComponentController();
+
+  private deviceMonitorListener: DeviceMonitorListenerImpl | null = null;
+
+  private handleDeviceMonitorStatus(status: DeviceStatus): void {
+    let chipInfo: string = status.chip.length > 0 ? ` chip=${status.chip}` : '';
+    let macInfo: string = status.mac.length > 0 ? ` mac=${status.mac}` : '';
+    if (status.disconnected) {
+      this.appendLog(`[Monitor] Device disconnected:${macInfo}${chipInfo} SSID ${status.ssid} reason=${status.reason}`);
+    } else if (status.success) {
+      this.appendLog(`[Monitor] Device online: ${status.ip} (${status.mac})${chipInfo} SSID: ${status.ssid}`);
+      if (this.isProvisioning) {
+        this.stopProvision();
+      }
+    } else {
+      this.appendLog(`[Monitor] Device failed:${macInfo}${chipInfo} SSID ${status.ssid}, reason: ${status.reason}`);
+    }
+    this.mergeDeviceStatus(status);
+  }
+
+  private mergeDeviceStatus(status: DeviceStatus): void {
+    let updated: boolean = false;
+    let newList: DeviceInfo[] = [...this.deviceInfoList];
+    for (let i: number = 0; i < newList.length; i++) {
+      let info: DeviceInfo = newList[i];
+      let matchedByMac: boolean = status.mac.length > 0 && info.mac.length > 0 && info.mac === status.mac;
+      let matchedByIp: boolean = status.ip.length > 0 && info.ip.length > 0 && info.ip === status.ip;
+      if (matchedByMac || matchedByIp) {
+        let merged: DeviceInfo = new DeviceInfo();
+        merged.bssid = info.bssid.length > 0 ? info.bssid : (status.mac.length > 0 ? status.mac : '');
+        merged.ip = status.ip.length > 0 ? status.ip : info.ip;
+        merged.mac = status.mac.length > 0 ? status.mac : info.mac;
+        merged.ssid = status.ssid;
+        merged.reason = status.reason;
+        merged.chip = status.chip.length > 0 ? status.chip : info.chip;
+        if (status.disconnected) {
+          merged.state = DeviceOnlineState.DISCONNECTED;
+        } else if (status.success) {
+          merged.state = DeviceOnlineState.ONLINE;
+        } else {
+          merged.state = DeviceOnlineState.OFFLINE;
+        }
+        merged.lastSeen = Date.now();
+        newList[i] = merged;
+        updated = true;
+        break;
+      }
+    }
+    if (!updated) {
+      let newInfo: DeviceInfo = DeviceInfo.fromDeviceStatus(status, null);
+      newList.push(newInfo);
+    }
+    this.deviceInfoList = newList;
+  }
   aboutToAppear(): void {
     this.loadWifiInfo();
     this.provisioner = new EspProvisioner();
+
+    this.deviceMonitorListener = new DeviceMonitorListenerImpl(
+      (status: DeviceStatus): void => { this.handleDeviceMonitorStatus(status); },
+      (error: Error): void => { this.appendLog(`[Monitor] Error: ${error.message}`); }
+    );
+    this.deviceMonitor.addListener(this.deviceMonitorListener);
+    this.deviceMonitor.start();
     this.appendLog('EspTouch V2 provisioner ready');
+    this.appendLog('Device monitor started on port 7001');
 
     // Estimate preview size from display
     try {
@@ -148,6 +244,10 @@ struct Index {
     if (this.provisioner != null) {
       this.provisioner.close();
       this.provisioner = null;
+    }
+    this.deviceMonitor.stop();
+    if (this.deviceMonitorListener != null) {
+      this.deviceMonitor.removeListener(this.deviceMonitorListener);
     }
   }
 
@@ -419,6 +519,7 @@ struct Index {
     this.qrPhase = 2;
     this.isProvisioning = true;
     this.devices = [];
+    this.deviceInfoList = [];
     this.selectedDeviceIndex = -1;
     this.apProvisionDone = false;
     this.apProvisionSuccess = false;
@@ -441,9 +542,14 @@ struct Index {
         this.apProvisionSuccess = result.success;
         if (result.success) {
           this.appendLog(`Provisioning success! Device IP: ${result.deviceIp}`);
-          // Add a virtual device entry for the result
           let addr: string = result.deviceIp.length > 0 ? result.deviceIp : '192.168.4.1';
-          this.devices.push(new EspProvisioningResult(addr, 'ESP32'));
+          this.devices = [...this.devices, new EspProvisioningResult(addr, 'ESP32')];
+          let info: DeviceInfo = new DeviceInfo();
+          info.bssid = 'ESP32';
+          info.ip = addr;
+          info.state = DeviceOnlineState.ONLINE;
+          info.lastSeen = Date.now();
+          this.deviceInfoList = [...this.deviceInfoList, info];
         } else {
           this.appendLog(`Provisioning failed: ${result.message}`);
         }
@@ -474,6 +580,7 @@ struct Index {
     this.scannedPassword = '';
     this.scannedCredentials = null;
     this.devices = [];
+    this.deviceInfoList = [];
     this.selectedDeviceIndex = -1;
     this.apProvisionDone = false;
     this.apProvisionSuccess = false;
@@ -493,6 +600,9 @@ struct Index {
       this.appendLog('Already provisioning');
       return;
     }
+
+    this.devices = [];
+    this.selectedDeviceIndex = -1;
 
     let encoder: util.TextEncoder = new util.TextEncoder();
     let builder: EspProvisioningRequestBuilder = new EspProvisioningRequestBuilder();
@@ -515,14 +625,16 @@ struct Index {
     }
 
     // Target selected device if one is selected
-    if (this.selectedDeviceIndex >= 0 && this.selectedDeviceIndex < this.devices.length) {
-      let selectedDevice: EspProvisioningResult = this.devices[this.selectedDeviceIndex];
-      try {
-        let bssidBytes: Uint8Array = convertBssid2Bytes(selectedDevice.bssid);
-        builder.setBSSID(bssidBytes);
-        this.appendLog(`Targeting selected device: ${selectedDevice.bssid}`);
-      } catch (e) {
-        this.appendLog(`Warning: invalid selected device BSSID, falling back to broadcast`);
+    if (this.selectedDeviceIndex >= 0 && this.selectedDeviceIndex < this.deviceInfoList.length) {
+      let selectedDeviceInfo: DeviceInfo = this.deviceInfoList[this.selectedDeviceIndex];
+      if (selectedDeviceInfo.bssid.length > 0) {
+        try {
+          let bssidBytes: Uint8Array = convertBssid2Bytes(selectedDeviceInfo.bssid);
+          builder.setBSSID(bssidBytes);
+          this.appendLog(`Targeting selected device: ${selectedDeviceInfo.bssid}`);
+        } catch (e) {
+          this.appendLog(`Warning: invalid selected device BSSID, falling back to broadcast`);
+        }
       }
     }
 
@@ -535,7 +647,39 @@ struct Index {
         this.appendLog(`Device responded: ${result.bssid} @ ${result.address}`);
         let exists: boolean = this.devices.some((d: EspProvisioningResult): boolean => d.bssid === result.bssid);
         if (!exists) {
-          this.devices.push(result);
+          this.devices = [...this.devices, result];
+        }
+        let deviceExists: boolean = this.deviceInfoList.some((info: DeviceInfo): boolean =>
+          info.bssid === result.bssid || (info.mac.length > 0 && info.mac === result.bssid) ||
+          (info.ip.length > 0 && info.ip === result.address));
+        if (!deviceExists) {
+          let newList: DeviceInfo[] = [...this.deviceInfoList];
+          newList.push(DeviceInfo.fromProvisionResult(result));
+          this.deviceInfoList = newList;
+        } else {
+          let newList: DeviceInfo[] = [...this.deviceInfoList];
+          for (let i: number = 0; i < newList.length; i++) {
+            let info: DeviceInfo = newList[i];
+            if (info.bssid === result.bssid || (info.mac.length > 0 && info.mac === result.bssid) ||
+                (info.ip.length > 0 && info.ip === result.address)) {
+              info.bssid = info.bssid.length > 0 ? info.bssid : result.bssid;
+              info.ip = result.address;
+              info.state = DeviceOnlineState.ONLINE;
+              info.lastSeen = Date.now();
+              let updated: DeviceInfo = new DeviceInfo();
+              updated.bssid = info.bssid;
+              updated.ip = info.ip;
+              updated.mac = info.mac;
+              updated.ssid = info.ssid;
+              updated.reason = info.reason;
+              updated.chip = info.chip;
+              updated.state = info.state;
+              updated.lastSeen = info.lastSeen;
+              newList[i] = updated;
+              break;
+            }
+          }
+          this.deviceInfoList = newList;
         }
       },
       (): void => {
@@ -545,6 +689,19 @@ struct Index {
       (error: Error): void => {
         this.isProvisioning = false;
         this.appendLog(`Provisioning error: ${error.message}`);
+      },
+      (status: DeviceStatus): void => {
+        let chipInfo: string = status.chip.length > 0 ? ` chip=${status.chip}` : '';
+        let macInfo: string = status.mac.length > 0 ? ` mac=${status.mac}` : '';
+        if (status.disconnected) {
+          this.appendLog(`Device disconnected:${macInfo}${chipInfo} SSID: ${status.ssid}`);
+        } else if (status.success) {
+          this.appendLog(`Device connected: ${status.ip} (${status.mac})${chipInfo} SSID: ${status.ssid}`);
+          this.stopProvision();
+        } else {
+          this.appendLog(`Device failed to connect:${macInfo}${chipInfo} SSID: ${status.ssid}, reason: ${status.reason}`);
+        }
+        this.mergeDeviceStatus(status);
       }
     );
 
@@ -1074,6 +1231,7 @@ struct Index {
         .margin({ bottom: 16 })
       }
     }
+    .layoutWeight(1)
     .padding({ left: 8, right: 8 })
     .width('100%')
   }
@@ -1100,55 +1258,74 @@ struct Index {
           Text(this.wifiIp).fontSize(14).fontColor('#555').margin({ left: 8 })
         }.width('100%').padding({ left: 16, right: 16, top: 4 })
 
-        // Device List (devices are discovered during Provisioning)
-        if (this.devices.length > 0) {
-          this.sectionTitle(`Discovered Devices (${this.devices.length})`)
-          List({ space: 6 }) {
-            ForEach(this.devices, (device: EspProvisioningResult, index?: number) => {
+// Device List with per-device status
+        this.sectionTitle(`ESP32 Devices (${this.deviceInfoList.length})`)
+        if (this.deviceInfoList.length > 0) {
+          List({ space: 8 }) {
+            ForEach(this.deviceInfoList, (deviceInfo: DeviceInfo, index?: number) => {
               ListItem() {
-                Row() {
-                  Column() {
-                    Text(device.bssid).fontSize(14).fontWeight(FontWeight.Bold)
-                    Text(device.address).fontSize(12).fontColor('#666')
-                  }.alignItems(HorizontalAlign.Start)
-                  .layoutWeight(1)
-
-                  if (index !== undefined && this.selectedDeviceIndex === index) {
-                    Text('Selected').fontSize(12).fontColor('#1976D2').margin({ left: 8 })
-                  }
-
-                  if (!this.isProvisioning) {
-                    Blank().width(6)
+                Column() {
+                  Row() {
                     Column() {
-                      if (this.testingDeviceBssid === device.bssid) {
-                        LoadingProgress().width(14).height(14).color('#1976D2')
+                      Row() {
+                        Text(deviceInfo.mac.length > 0 ? deviceInfo.mac : deviceInfo.bssid)
+                          .fontSize(14)
+                          .fontWeight(FontWeight.Bold)
+                          .fontColor('#333')
+                        if (deviceInfo.chip.length > 0) {
+                          Text(` (${deviceInfo.chip})`)
+                            .fontSize(12)
+                            .fontColor('#888')
+                        }
+                      }.width('100%')
+                      if (deviceInfo.ip.length > 0) {
+                        Row() {
+                          Text('IP: ').fontSize(12).fontColor('#888')
+                          Text(deviceInfo.ip).fontSize(12).fontColor('#555')
+                        }.width('100%').margin({ top: 2 })
                       }
-                      Text('Actions')
-                        .fontSize(12)
-                        .fontColor('#1976D2')
-                        .fontWeight(FontWeight.Bold)
-                    }
-                    .onClick((): void => {
-                      this.showDeviceActionsDialog(device);
-                    })
-                  }
-                }
-                .width('100%')
-                .justifyContent(FlexAlign.SpaceBetween)
+                      if (deviceInfo.ssid.length > 0) {
+                        Row() {
+                          Text('SSID: ').fontSize(12).fontColor('#888')
+                          Text(deviceInfo.ssid).fontSize(12).fontColor('#555')
+                        }.width('100%').margin({ top: 2 })
+                      }
+                    }.alignItems(HorizontalAlign.Start)
+                    .layoutWeight(1)
+
+                    Column() {
+                      if (this.testingDeviceBssid === deviceInfo.bssid ||
+                          (deviceInfo.bssid.length === 0 && this.testingDeviceBssid === deviceInfo.mac)) {
+                        LoadingProgress().width(16).height(16).color('#1976D2')
+                      }
+                      Row() {
+                        Circle({ width: 8, height: 8 })
+                          .fill(deviceInfo.stateColor)
+                        Text(deviceInfo.stateLabel)
+                          .fontSize(12)
+                          .fontColor(deviceInfo.stateColor)
+                          .fontWeight(FontWeight.Bold)
+                          .margin({ left: 4 })
+                      }
+                    }.alignItems(HorizontalAlign.Center)
+                  }.width('100%').justifyContent(FlexAlign.SpaceBetween)
+                }.width('100%')
                 .padding(12)
-                .backgroundColor(index !== undefined && this.selectedDeviceIndex === index ? '#E3F2FD' : '#F5F5F5')
+                .backgroundColor(deviceInfo.bgColor)
                 .borderRadius(8)
-              }
-              .onClick((): void => {
+              }.onClick((): void => {
                 if (index !== undefined) {
                   this.selectedDeviceIndex = index;
-                  this.appendLog(`Selected device: ${device.bssid}`);
+                  this.appendLog(`Selected device: ${deviceInfo.mac.length > 0 ? deviceInfo.mac : deviceInfo.bssid}`);
                 }
               })
-            }, deviceKey)
+            }, (deviceInfo: DeviceInfo, index?: number): string => {
+                return deviceInfo.bssid.length > 0 ? deviceInfo.bssid :
+                       (deviceInfo.mac.length > 0 ? deviceInfo.mac : String(index));
+              })
           }
           .width('100%')
-          .height(this.devices.length * 60 > 240 ? 240 : this.devices.length * 60)
+          .height(this.deviceInfoList.length * 72 > 260 ? 260 : this.deviceInfoList.length * 72)
           .padding({ left: 16, right: 16, top: 4 })
         }
 
@@ -1217,7 +1394,7 @@ struct Index {
             .fontColor('#00ff00')
             .fontSize(12)
         }
-        .width('100%').height(200)
+        .width('100%').height(160)
         .backgroundColor('#1a1a2e')
         .padding(8).borderRadius(6)
         .scrollBar(BarState.On)
@@ -1225,6 +1402,7 @@ struct Index {
         .margin({ bottom: 16 })
       }
     }
+    .layoutWeight(1)
     .padding({ left: 8, right: 8 })
     .width('100%')
   }

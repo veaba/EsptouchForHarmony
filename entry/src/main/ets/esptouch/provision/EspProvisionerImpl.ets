@@ -88,13 +88,15 @@ export class EspProvisionerImpl implements IEspProvisioner {
         await udpSocket.bind({ address: '0.0.0.0', port: APP_PORTS[i], family: 1 });
         await udpSocket.setExtraOptions({ broadcast: true });
         portMark = i;
+        console.info(TAG, `bind: SUCCESS on port ${APP_PORTS[i]}`);
         break;
-      } catch (_e) {
-        // Port in use, try next
+      } catch (e) {
+        console.warn(TAG, `bind: port ${APP_PORTS[i]} failed: ${e}`);
       }
     }
 
     if (portMark < 0) {
+      console.error(TAG, 'bind: ALL ports failed');
       try {
         udpSocket.close();
       } catch (_e) { /* ignore */ }
@@ -108,6 +110,8 @@ export class EspProvisionerImpl implements IEspProvisioner {
     this.provisioning = true;
     this.responseMacs.clear();
     this.provisionListener = listener;
+
+    console.info(TAG, `provisioning started on port ${APP_PORTS[portMark]}, broadcast to ${this.broadcastAddress}:${DEVICE_PORT}`);
 
     if (listener != null) {
       listener.onStart();
@@ -135,19 +139,23 @@ export class EspProvisionerImpl implements IEspProvisioner {
   private setupReceiveHandler(sock: socket.UDPSocket, listener: EspProvisioningListener | null): void {
     sock.on('message', (data: socket.SocketMessageInfo) => {
       if (!this.provisioning) {
+        console.warn(TAG, 'setupReceiveHandler: message received but not provisioning, drop');
         return;
       }
 
       let message: ArrayBuffer = data.message;
       let remoteInfo = data.remoteInfo;
+      console.info(TAG, `recv: ${message.byteLength} bytes from ${remoteInfo.address}:${remoteInfo.port}`);
 
       if (message.byteLength < MIN_RESPONSE_LEN) {
+        console.warn(TAG, `recv: too short (${message.byteLength} < ${MIN_RESPONSE_LEN}), drop`);
         return;
       }
 
       let response: Uint8Array = new Uint8Array(message);
       let deviceAddress: string = remoteInfo.address;
       let bssidStr: string = bssidBytesToString(response.slice(1, 7));
+      console.info(TAG, `recv: from=${deviceAddress}, bssid=${bssidStr}, firstByte=${response[0]}`);
 
       this.sendAck(deviceAddress);
 
