@@ -120,26 +120,50 @@ EsptouchForHarmony/
 
 ## 功能特性
 
-### EspTouch V2 配网
+### 双模式配网
 
-- **同步阶段 (Sync)**: 广播 1048 字节的空同步包，让设备发现配网器
+| 特性 | ESPTouch 模式 (Manual) | AP 配网模式 (QR Scan) |
+|------|----------------------|----------------------|
+| 协议 | ESP-TOUCH V2 Smart Config（UDP 广播） | AP 热点模式（TCP 直连） |
+| 密码来源 | 用户手动输入 | 扫描 WiFi QR 码自动解析 |
+| 设备状态 | 混杂模式嗅探 | 开启 AP 热点（如 `esp32-s3-wifi`） |
+| 数据通道 | UDP 端口 7001/7002/18266+ | TCP 192.168.4.1:8080 |
+| 适用场景 | 已知 WiFi 密码 | 有 WiFi QR 码 |
+| 加密支持 | AES-CBC（Security V1/V2） | JSON 明文 + TCP |
+
+### ESPTouch V2 配网（Manual 标签页）
+
+- **同步阶段 (Sync)**: 广播 1048 字节空同步包，让设备发现配网器
 - **配网阶段 (Provision)**:
-  - 构建包含 SSID、密码、自定义数据的头包 + 数据包
-  - 支持 AES-CBC 加密（V2 含 20 字节 IV）
-  - CRC8 校验（poly=0x8c）
-  - 数据包按 15ms 间隔发送，45 秒后切换为 100ms
-  - 总超时 90 秒
-  - 收到设备响应后回复 ACK 确认
+  - 构建包含 SSID、密码、BSSID、自定义数据的头包 + 数据包
+  - 支持 AES-CBC 加密（Security V1: 全零 IV；Security V2: 20 字节随机 IV）
+  - CRC8 校验（poly=0x8c）保证数据完整性
+  - 数据包按 15ms 间隔发送，45 秒后切换为 100ms，总超时 90 秒
+  - 收到设备响应后发送 ACK 确认包
+  - 多端口尝试绑定（18266/28266/38266/48266），端口索引编码到 flag
+- **设备状态监听**: UDP 7001 端口监听设备 WiFi 连接状态（IP/MAC/SSID/失败原因）
+- **多设备支持**: 通过 BSSID 去重，每发现一个新设备触发 `onResponse` 回调
+- **可选 AES 密钥**: 支持 16 字节自定义 AES 密钥输入
 
-### 应用功能
+### AP 配网（QR Scan 标签页）
+
+- **QR 码扫描**: 基于系统 ScanKit 解析标准 WiFi QR 码（`WIFI:T:WPA;S:SSID;P:PWD;;`）
+- **AP 连接引导**: 提示用户连接 ESP32 AP 热点，自动检测连接状态
+- **TCP 凭据传输**: JSON 协议发送 `{cmd, ssid, password, auth}` 到 ESP32
+- **Keepalive 保活**: 每 10 秒发送 `{cmd: "ping"}` 维持 TCP 连接
+- **自动回连检测**: 配网完成后引导并检测用户重新连接目标 WiFi
+- **阶段可视化**: 实时展示 6 个配网阶段（WAITING_AP → CONNECTING_TCP → SENDING_CREDS → WAITING_CONFIRM → RECONNECTING → DONE）
+
+### 通用功能
 
 | 功能 | 说明 |
 |------|------|
-| **QR 码扫描配网** | 扫描标准 WiFi QR 码（`WIFI:S:SSID;P:PWD;T:WPA;;`），自动解析凭据并发起配网 |
-| **手动配网** | 手动输入 WiFi 密码，支持 AES 加密配置和 Security V2 |
-| **设备发现** | 通过同步包广播发现周围处于 Smart Config 模式的 ESP32 设备 |
-| **设备管理** | 查看发现的设备列表，支持测试连接（TCP 端口扫描 80/8080/443） |
-| **实时日志** | 内置日志面板，支持复制和清空 |
+| **WiFi 信息自动获取** | 通过 `wifiManager.getLinkedInfo()` 自动读取当前 SSID/BSSID/IP，免去手动输入 |
+| **设备管理** | 查看已配网设备列表，显示 BSSID 和 IP 地址 |
+| **连接测试** | 对已配网设备进行 TCP 端口扫描（80/8080/443），验证设备可达性 |
+| **复制 IP** | 一键复制设备 IP 地址到剪贴板 |
+| **实时日志面板** | 终端风格日志输出，带时间戳，支持一键复制和清空 |
+| **相机权限管理** | 运行时动态申请相机权限，扫描完成后自动释放相机 |
 
 ---
 
